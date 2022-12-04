@@ -1,0 +1,139 @@
+#!/bin/bash
+
+
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#  Copyright 2022 Goran Vuckovic
+
+input=("$*")
+list=$(flatpak --app list)
+acount=$#
+shelltie='false'
+
+while getopts ':s' 'OPTKEY'; do
+    case ${OPTKEY} in
+        's')
+            shelltie='true'
+            ;;
+        '?')
+            echo "INVALID OPTION -- ${OPTARG}" >&2
+            exit 1
+            ;;
+        ':')
+            echo "MISSING ARGUMENT for option -- ${OPTARG}" >&2
+            exit 1
+            ;;
+        *)
+            echo "UNIMPLEMENTED OPTION -- ${OPTKEY}" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if ${shelltie}
+then
+    acount=$(($acount-1))
+    input=$(echo "$input" | cut -c 4-)
+fi
+
+if [ $acount  -eq 0 ]
+then
+    MAX=$(echo "$list" | wc -l)
+    I=1
+    START=0
+    tput cnorm
+
+    lister (){
+    number="$1"
+    list2=$(echo "$list" | cut -f1)
+    list3=$(echo "$list2" | head -n $number | tail -n 1)
+    list4=$(echo "$list2" | grep --color=always -zi "$list3"|tr -d '\0')
+    flats=$(echo "$list2" | wc -l)
+    cur=$(echo "$list2"|grep -n "$list3"| cut -d: -f1)
+    termlines=$(tput lines)
+
+    if [ $(($flats + 1)) -le $termlines ]
+    then
+        tput reset
+        echo "$list4"
+    else
+        termmulti=$(($flats/$termlines))
+        termslice=$(($termlines - 1))
+        while [ $termslice -lt $cur ]
+        do
+            termslice=$(($termslice+$termlines))
+            done
+        if [ $(($termslice))  -le $termlines ]
+        then
+            output=$(echo "$list4" | head -n $termslice)
+            tput reset
+            echo -n "$output"
+        else
+            if [ $((flats - $cur))  -lt $termlines ]
+            then
+                output=$(echo "$list4" | head -n$(($termslice))| tail -n $(($flats - $termlines + 1)))
+                tput reset
+            echo -n "$output"
+            else
+                output=$(echo "$list4" | head -n$(($termslice))| tail -n $(($termlines)))
+                tput reset
+                echo -n "$output"
+            fi
+        fi
+    fi
+    }
+    lister $I
+    while read -rsn1 input
+    do
+        if  echo $input | grep -q A
+        then
+            I=$((I - 1))
+            if [ $I -le 0 ]
+            then
+            I=$MAX
+            fi
+        lister $I
+        elif  echo $input | grep -q B
+        then
+            I=$((I + 1))
+            if [ $I -ge $(($MAX + 1)) ]
+            then
+            I=1
+            fi
+        lister $I
+        elif [[ "$input" == "" ]]
+        then
+          tput reset
+          if ${shelltie}
+          then
+            flatpak run $(echo "$list"|grep "$list3"|cut -f2)
+          else
+          nohup flatpak run $(echo "$list"|grep "$list3"|cut -f2) > /dev/null 2>&1&
+          fi
+          break
+        fi
+    done
+else
+
+    if echo $list | grep -q "$input"
+    then
+        if ${shelltie}
+        then
+            flatpak run $(echo "$list" | grep -i "$input"|cut -f2)
+        else
+            nohup flatpak run $(echo "$list" | grep -i "$input"|cut -f2) > /dev/null 2>&1&
+       fi
+    else
+        echo "Flatpak not found"
+    fi
+fi
